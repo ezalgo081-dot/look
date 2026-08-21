@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NSE Option Chain Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/styles.css?v=4">
+</head>
+<body>
+
+<!-- ── Sidebar ────────────────────────────────────────────────────────── -->
+<nav class="sidebar">
+    <div class="logo">COA</div>
+    <div class="sidebar-icon active" id="navDashboard" title="Dashboard">&#9632;</div>
+    <div class="sidebar-icon" id="navExport" title="Download CSV / JSON">&#8681;</div>
+    <div class="sidebar-icon" id="navFullscreen" title="Fullscreen">&#9733;</div>
+    <div class="sidebar-icon" id="navSettings" title="Settings">&#9881;</div>
+</nav>
+
+<!-- ── Export Modal ───────────────────────────────────────────────────── -->
+<div class="modal-overlay" id="exportModal" style="display:none;">
+    <div class="modal-box">
+        <div class="modal-header">
+            <span>Download Option Chain Data</span>
+            <button class="modal-close" id="exportClose">&times;</button>
+        </div>
+        <div class="modal-body">
+            <p style="margin-bottom:12px;color:var(--text-secondary);">Export the current option chain snapshot with all COA-computed fields.</p>
+            <div style="display:flex;gap:12px;">
+                <button class="export-btn csv" id="downloadCSV">&#128196; Download CSV</button>
+                <button class="export-btn json" id="downloadJSON">&#123;&#125; Download JSON</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Settings Modal ────────────────────────────────────────────────── -->
+<div class="modal-overlay" id="settingsModal" style="display:none;">
+    <div class="modal-box">
+        <div class="modal-header">
+            <span>Settings</span>
+            <button class="modal-close" id="settingsClose">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="settings-row">
+                <label>Symbol</label>
+                <span class="settings-value" id="settingSymbol">--</span>
+            </div>
+            <div class="settings-row">
+                <label>Refresh Interval</label>
+                <span class="settings-value" id="settingInterval">--</span>
+            </div>
+            <div class="settings-row">
+                <label>Strikes Shown</label>
+                <span class="settings-value" id="settingStrikes">--</span>
+            </div>
+            <div class="settings-row">
+                <label>Server</label>
+                <span class="settings-value" id="settingServer">--</span>
+            </div>
+            <div class="settings-row">
+                <label>Data Source</label>
+                <span class="settings-value" id="settingFetcher">--</span>
+            </div>
+            <div class="settings-row" id="upstoxStatusRow" style="display:none;">
+                <label>Upstox Status</label>
+                <span class="settings-value" id="settingUpstox">--</span>
+            </div>
+            <p style="margin-top:12px;font-size:11px;color:var(--text-secondary);">To change settings, edit <code>backend/config.py</code> and restart the server.</p>
+        </div>
+    </div>
+</div>
+
+<!-- ── Def of Def Modal ────────────────────────────────────────────── -->
+<div class="modal-overlay" id="defOfDefModal" style="display:none;">
+    <div class="modal-box" style="max-width:95vw; max-height:90vh; width:95vw;">
+        <div class="modal-header">
+            <span>Difference of Difference Log</span>
+            <button class="modal-close" id="defOfDefClose">&times;</button>
+        </div>
+        <div class="modal-body" style="overflow:auto; max-height:calc(90vh - 100px);">
+            <div style="margin-bottom:12px; font-size:12px; color:var(--text-secondary);">
+                <strong>Note:</strong> Red text = negative difference, Green text = positive difference
+            </div>
+            <table class="def-of-def-table" id="defOfDefTable">
+                <thead id="defOfDefThead">
+                    <tr>
+                        <th>Log Time</th>
+                        <!-- Strike columns will be dynamically added -->
+                    </tr>
+                </thead>
+                <tbody id="defOfDefBody">
+                    <tr><td colspan="100" style="text-align:center;color:#555;">Waiting for data...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ── Main Content ───────────────────────────────────────────────────── -->
+<div class="main-content">
+
+    <!-- Header Bar -->
+    <header class="header-bar" id="headerBar">
+        <select class="symbol-selector" id="symbolSelector">
+            <option value="NIFTY" selected>NIFTY</option>
+            <option value="BANKNIFTY">BANKNIFTY</option>
+            <option value="FINNIFTY">FINNIFTY</option>
+            <option value="SENSEX">SENSEX</option>
+            <option value="BANKEX">BANKEX</option>
+        </select>
+
+        <div class="spot-price" id="spotPrice">
+            <span class="label">Spot:</span>
+            <span id="spotVal">--</span>
+        </div>
+
+        <div class="header-stat">
+            <span class="stat-label">Future</span>
+            <span class="stat-value cyan" id="futureVal">--</span>
+        </div>
+
+        <div class="header-stat">
+            <span class="stat-label">Max Pain</span>
+            <span class="stat-value yellow" id="maxPainVal">--</span>
+        </div>
+
+        <div class="header-stat">
+            <span class="stat-label">Max Gain</span>
+            <span class="stat-value green" id="maxGainVal">--</span>
+        </div>
+
+        <div class="header-stat">
+            <span class="stat-label">LOT</span>
+            <span class="stat-value" id="lotVal">--</span>
+        </div>
+
+        <div class="header-stat">
+            <span class="stat-label">PCR</span>
+            <span class="stat-value" id="pcrVal">--</span>
+        </div>
+
+        <div class="header-stat">
+            <span class="stat-label">Expiry</span>
+            <span class="stat-value" id="expiryVal">--</span>
+        </div>
+
+        <span class="risky-badge moderate" id="riskyBadge">MODERATE</span>
+
+        <div class="speed-meter" id="speedMeter">
+            <span class="dot" id="speedDot"></span>
+            <span id="speedText">Connecting...</span>
+        </div>
+    </header>
+
+    <!-- Upstox Login Banner (shown when API key set but not logged in) -->
+    <div class="upstox-banner" id="upstoxBanner" style="display:none;">
+        <span>Upstox API configured but not logged in. Real-time data ke liye login karein:</span>
+        <a href="/upstox/login" class="upstox-banner-btn">Login with Upstox</a>
+        <span style="font-size:11px; opacity:0.6; margin-left:8px;">NSE fallback data chal raha hai (~30s delay)</span>
+    </div>
+
+    <!-- Content: Table + Right Panel -->
+    <div class="content-area">
+
+        <!-- Option Chain Table -->
+        <div class="chain-panel" id="chainPanel">
+            <div class="waiting-overlay" id="waitingOverlay">
+                <div class="spinner"></div>
+                <div id="waitingText">Connecting to data feed...</div>
+                <div style="font-size:11px; opacity:0.6" id="waitingSubtext">Data updates every ~1 second during market hours</div>
+                <div id="upstoxLoginPrompt" style="display:none; margin-top:16px;">
+                    <a href="/upstox/login" class="upstox-login-btn">Login with Upstox</a>
+                    <div style="font-size:11px; opacity:0.6; margin-top:8px;">One-time daily login for real-time data</div>
+                </div>
+            </div>
+            <table class="chain-table" id="chainTable" style="display:none;">
+                <thead>
+                    <tr>
+                        <th class="call-header">OI Chg Diff</th>
+                        <th class="call-header">Vol Chg Diff</th>
+                        <th class="call-header">Vol Chg</th>
+                        <th class="call-header">Volume</th>
+                        <th class="call-header">OI Chg</th>
+                        <th class="call-header">OI</th>
+                        <th class="call-header">LTP</th>
+                        <th class="call-header">S-Reversal</th>
+                        <th class="strike-header">Strike</th>
+                        <th class="put-header">S-Reversal</th>
+                        <th class="put-header">LTP</th>
+                        <th class="put-header">OI</th>
+                        <th class="put-header">OI Chg</th>
+                        <th class="put-header">Volume</th>
+                        <th class="put-header">Vol Chg</th>
+                        <th class="put-header">Vol Chg Diff</th>
+                        <th class="put-header">OI Chg Diff</th>
+                    </tr>
+                </thead>
+                <tbody id="chainBody"></tbody>
+            </table>
+        </div>
+
+        <!-- Right Panel -->
+        <aside class="right-panel">
+            <!-- OI Summary (moved to top) -->
+            <div class="panel-title">
+                <span class="icon">&#9673;</span>
+                OI Summary
+            </div>
+            <div class="oi-summary">
+                <div class="oi-card">
+                    <div class="oi-label">Total CE OI</div>
+                    <div class="oi-value green" id="totalCeOi">--</div>
+                </div>
+                <div class="oi-card">
+                    <div class="oi-label">Total PE OI</div>
+                    <div class="oi-value red" id="totalPeOi">--</div>
+                </div>
+                <div class="oi-card">
+                    <div class="oi-label">PCR</div>
+                    <div class="oi-value cyan" id="pcrCard">--</div>
+                </div>
+                <div class="oi-card">
+                    <div class="oi-label">ATM Strike</div>
+                    <div class="oi-value" id="atmCard">--</div>
+                </div>
+            </div>
+
+            <!-- Spot Chart -->
+            <div class="panel-title" style="margin-top:8px;">
+                <span class="icon">&#9679;</span>
+                Spot Chart
+            </div>
+            <div class="chart-container" id="spotChart"></div>
+
+            <!-- 3 Strike Range OI Analysis -->
+            <div class="panel-title" style="margin-top:8px;">
+                <span class="icon">&#916;</span>
+                Strike Range OI Analysis
+            </div>
+
+            <div class="strike-selector-area">
+                <div class="strike-selector-row">
+                    <label>Strike 1</label>
+                    <select class="strike-select" id="strikeSelect1"><option value="">--</option></select>
+                </div>
+                <div class="strike-selector-row">
+                    <label>Strike 2</label>
+                    <select class="strike-select" id="strikeSelect2"><option value="">--</option></select>
+                </div>
+                <div class="strike-selector-row">
+                    <label>Strike 3</label>
+                    <select class="strike-select" id="strikeSelect3"><option value="">--</option></select>
+                </div>
+            </div>
+
+            <div class="tracking-controls">
+                <button class="track-btn start-btn" id="btnStart">&#9654; START</button>
+                <button class="track-btn stop-btn" id="btnStop" disabled>&#9724; STOP</button>
+                <button class="track-btn clear-btn" id="btnClear">&#10005; CLEAR</button>
+            </div>
+
+            <!-- Live Summary (like client's Excel) -->
+            <div class="strike-analysis-container" id="strikeSummaryContainer">
+                <table class="strike-analysis-table">
+                    <thead>
+                        <tr>
+                            <th>Strike</th>
+                            <th class="green-text">Call OI Change</th>
+                            <th class="red-text">Put OI Change</th>
+                            <th>Difference</th>
+                            <th>Signal</th>
+                        </tr>
+                    </thead>
+                    <tbody id="strikeSummaryBody">
+                        <tr><td colspan="5" style="text-align:center;color:#555;">Select strikes &amp; press START</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Time-based history log -->
+            <div class="panel-title" style="margin-top:8px;">
+                <span class="icon">&#8986;</span>
+                OI Change History
+                <button class="def-of-def-btn" id="openDefOfDef" title="Open Difference of Difference Log" style="float:right; padding:4px 8px; font-size:11px; background:var(--accent); border:none; border-radius:4px; color:white; cursor:pointer;">Def. of Def</button>
+            </div>
+            <div class="strike-analysis-container" id="strikeAnalysisContainer">
+                <table class="strike-analysis-table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th class="green-text">CE OI Total</th>
+                            <th class="red-text">PE OI Total</th>
+                            <th>Difference</th>
+                            <th>Diff of Diff</th>
+                        </tr>
+                    </thead>
+                    <tbody id="strikeAnalysisBody">
+                        <tr><td colspan="5" style="text-align:center;color:#555;">Tracking will start on START</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </aside>
+    </div>
+
+    <!-- Status Bar -->
+    <footer class="status-bar">
+        <div class="status-item">
+            <span>&#9201;</span>
+            <span id="timestampStatus">--</span>
+        </div>
+        <div class="status-item">
+            <span>&#9889;</span>
+            Fetch: <span id="fetchLatency">--</span>ms
+        </div>
+        <div class="status-item">
+            <span>&#9881;</span>
+            Process: <span id="processLatency">--</span>ms
+        </div>
+        <div class="status-item" id="dataSourceStatus" style="margin-left:auto;">
+            Option Chain Dashboard &middot; COA 1.0
+        </div>
+    </footer>
+</div>
+
+<script src="/js/chart.js?v=4"></script>
+<script src="/js/speed_meter.js?v=4"></script>
+<script src="/js/app.js?v=4"></script>
+</body>
+</html>
